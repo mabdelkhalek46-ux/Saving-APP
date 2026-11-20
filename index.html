@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="My Budget">
+<title>My Budget</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:16px;background:#f2f2f7;color:#111}
+h1{font-size:26px;margin:8px 0 14px}h2{font-size:18px;margin:0 0 10px}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:14px}
+input,select,button{font-size:16px;padding:10px;border-radius:10px;border:1px solid #ccc;width:100%;box-sizing:border-box;margin:4px 0}
+button{background:#007aff;color:#fff;border:none;font-weight:600}
+.row{display:flex;gap:6px}.row>*{flex:1}
+.bar{height:8px;background:#e5e5ea;border-radius:4px;overflow:hidden;margin-top:6px}
+.fill{height:100%;background:#34c759}.over .fill{background:#ff3b30}.over .left{color:#ff3b30}
+.cat{margin:12px 0}.top{display:flex;justify-content:space-between;font-size:15px}
+.small{font-size:13px;color:#666}.del{background:#ff3b30;width:auto;padding:6px 10px;font-size:13px}
+.item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+#smsBox{border:2px solid #007aff;display:none}
+.edit{border-bottom:1px solid #eee;padding:8px 0}
+</style></head><body>
+<h1>My Budget</h1>
+
+<div class="card" id="smsBox">
+<h2>New bank message</h2>
+<p class="small" id="smsText"></p>
+<input type="number" id="smsAmount" placeholder="Amount">
+<select id="smsCat"></select>
+<input id="smsNote" placeholder="Note">
+<div class="row"><button onclick="saveSms()">Save</button><button style="background:#8e8e93" onclick="hideSms()">Ignore</button></div>
+</div>
+
+<div class="card">
+<h2>Salary</h2>
+<input type="number" id="salary" placeholder="Monthly salary" onchange="d.salary=+this.value||0;save()">
+<div id="summary" class="small"></div>
+</div>
+
+<div class="card"><h2>Categories this month</h2><div id="cats"></div></div>
+
+<div class="card">
+<h2>Add expense</h2>
+<input type="number" id="expAmount" placeholder="Amount">
+<select id="expCat"></select>
+<input id="expNote" placeholder="Note (optional)">
+<button onclick="addExp()">Add</button>
+</div>
+
+<div class="card"><h2>This month's expenses</h2><div id="list"></div></div>
+
+<div class="card">
+<h2>Edit categories</h2>
+<p class="small">Keywords: words in bank messages that point to this category, separated by commas.</p>
+<div id="editCats"></div>
+<button onclick="addCat()">+ Add category</button>
+</div>
+
+<script>
+const KEY='myBudget';
+let d;
+try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!d)d={salary:0,exp:[],cats:[
+{name:'Home',budget:0,kw:'carrefour,spinneys,kazyon,market,supermarket,pharmacy'},
+{name:'Car',budget:0,kw:'fuel,petrol,wataniya,chillout,mobil,car,بنزين'},
+{name:'Investment',budget:0,kw:'thndr,broker,securities,بورصة'},
+{name:'Education',budget:0,kw:'eslsca,course,udemy,coursera'},
+{name:'Shopping',budget:0,kw:'amazon,noon,zara,mall,store'},
+{name:'Donations',budget:0,kw:'donation,57357,foodbank,تبرع'}]};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(d))}catch(e){}render()}
+const month=()=>new Date().toISOString().slice(0,7);
+const cur=()=>d.exp.filter(e=>e.date.startsWith(month()));
+const spent=n=>cur().filter(e=>e.cat===n).reduce((s,e)=>s+e.amount,0);
+const fmt=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(){
+ salary.value=d.salary||'';
+ const total=cur().reduce((s,e)=>s+e.amount,0),planned=d.cats.reduce((s,c)=>s+c.budget,0);
+ summary.innerHTML=`Spent: <b>${fmt(total)}</b> · Left: <b>${fmt(d.salary-total)}</b><br>Planned: ${fmt(planned)} · Unallocated: ${fmt(d.salary-planned)}`;
+ const opts=d.cats.map(c=>`<option>${esc(c.name)}</option>`).join('');
+ const keep=smsCat.value;expCat.innerHTML=opts;smsCat.innerHTML=opts;if(keep)smsCat.value=keep;
+ cats.innerHTML=d.cats.map(c=>{const s=spent(c.name),p=c.budget?Math.min(100,s/c.budget*100):0;
+  return `<div class="cat ${c.budget&&s>c.budget?'over':''}"><div class="top"><b>${esc(c.name)}</b><span>${fmt(s)} / ${fmt(c.budget)}</span></div>
+  <div class="bar"><div class="fill" style="width:${p}%"></div></div><div class="small left">Left: ${fmt(c.budget-s)}</div></div>`}).join('');
+ list.innerHTML=cur().slice().reverse().map(e=>`<div class="item"><div>${fmt(e.amount)} · ${esc(e.cat)}<div class="small">${e.date.slice(0,10)} ${esc(e.note||'')}</div></div><button class="del" onclick="delExp(${e.id})">Delete</button></div>`).join('')||'<p class="small">No expenses yet</p>';
+ editCats.innerHTML=d.cats.map((c,i)=>`<div class="edit"><div class="row"><input value="${esc(c.name)}" onchange="renameCat(${i},this.value)"><input type="number" value="${c.budget||''}" placeholder="Budget" onchange="d.cats[${i}].budget=+this.value||0;save()"></div>
+  <input value="${esc(c.kw||'')}" placeholder="Keywords" onchange="d.cats[${i}].kw=this.value;save()">
+  <button class="del" onclick="delCat(${i})">Delete category</button></div>`).join('');
+}
+function renameCat(i,v){v=v.trim();if(!v)return render();const old=d.cats[i].name;d.exp.forEach(e=>{if(e.cat===old)e.cat=v});d.cats[i].name=v;save()}
+function addCat(){d.cats.push({name:'New category',budget:0,kw:''});save()}
+function delCat(i){if(confirm('Delete "'+d.cats[i].name+'"?')){d.cats.splice(i,1);save()}}
+function addExp(){const a=+expAmount.value;if(!a)return alert('Enter amount');d.exp.push({id:Date.now(),amount:a,cat:expCat.value,note:expNote.value,date:new Date().toISOString()});expAmount.value='';expNote.value='';save()}
+function delExp(id){if(confirm('Delete expense?')){d.exp=d.exp.filter(e=>e.id!==id);save()}}
+function parseAmount(t){
+ t=t.replace(/[٠-٩]/g,x=>'٠١٢٣٤٥٦٧٨٩'.indexOf(x)).replace(/(\d),(\d)/g,'$1$2');
+ const m=t.match(/(?:EGP|LE|L\.E\.?|جنيه|ج\.م)\s*(\d+(?:\.\d+)?)/i)||t.match(/(\d+(?:\.\d+)?)\s*(?:EGP|LE|L\.E|جنيه|ج\.م)/i)||t.match(/(\d+\.\d+)/)||t.match(/(\d+)/);
+ return m?parseFloat(m[1]):0}
+function guessCat(t){t=t.toLowerCase();for(const c of d.cats){for(const k of (c.kw||'').split(',')){const w=k.trim().toLowerCase();if(w&&t.includes(w))return c.name}}return d.cats[0]?d.cats[0].name:''}
+function showSms(t){smsText.textContent=t;smsAmount.value=parseAmount(t)||'';render();smsCat.value=guessCat(t);smsNote.value='';smsBox.style.display='block';scrollTo(0,0)}
+function hideSms(){smsBox.style.display='none'}
+function saveSms(){const a=+smsAmount.value;if(!a)return alert('Enter amount');d.exp.push({id:Date.now(),amount:a,cat:smsCat.value,note:smsNote.value||'Bank SMS',date:new Date().toISOString()});hideSms();save()}
+render();
+const q=new URLSearchParams(location.search).get('sms');
+if(q){history.replaceState(null,'',location.pathname);showSms(q)}
+</script></body></html>
